@@ -1,4 +1,31 @@
-# Bose Homeassistant
+# Bose Home Assistant — experimental stability fork
+
+> Documentation adapted by [PUSCHi1337](https://github.com/PUSCHi1337) on 2026-10-29,
+> based on [cavefire/Bose-Homeassistant](https://github.com/cavefire/Bose-Homeassistant).
+> Upstream authorship, copyright notices and the [GNU GPLv3 license](LICENSE) are retained.
+> This fork is not an official Bose product or an upstream release.
+
+## Fork development status
+
+This repository is the companion integration fork for the stability work in
+[PUSCHi1337/pybose](https://github.com/PUSCHi1337/pybose).
+The library's [discovery cleanup](https://github.com/PUSCHi1337/pybose/pull/1)
+and [connection lifecycle work](https://github.com/PUSCHi1337/pybose/pull/2)
+are draft changes. Their GitHub checks cover simulated unit tests, not hardware
+validation of this integration.
+
+This documentation branch does not change the integration's runtime code.
+The manifest still requires upstream `pybose==2026.10.2`: installing this
+integration fork alone therefore does **not** activate the draft library fixes.
+The token background-task lifecycle and stale entity client/callback references
+after reconnection remain open. There is no tested fork installation package or
+fork release, and a fix for a full NAS hang has not been established.
+
+The installation instructions, screenshots, feature lists and device reports below
+are retained as upstream reference. They must not be read as evidence that the
+modified fork has been tested on those devices. Discuss fork-specific changes in
+the relevant fork PR; upstream maintainers are not responsible for this branch.
+
 
 This is a custom component for Home Assistant to integrate with Bose soundbars / speakers.
 The speakers are controlled 100% locally. However, a cloud account is needed and required configured in the integration. Read more about this in the [BOSE Account](#bose-account) section.
@@ -7,18 +34,18 @@ The speakers are controlled 100% locally. However, a cloud account is needed and
 
 ![Preview](images/media_player.jpg)
 
-## Installation
+## Upstream installation reference
 
 ### Using HACS
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](http://mine.li/mTnn1)](http://mine.li/uuOUj)
+For the original integration, follow the
+[upstream installation instructions](https://github.com/cavefire/Bose-Homeassistant#installation).
+Those instructions install the upstream package, not the draft stability fixes
+being developed in this fork.
 
-1. Click the link above to open the integration in HACS.
-2. Install the integration.
+### Upstream manual installation (reference only)
 
-### Manual Installation
-
-1. Clone or download this repository.
+1. Clone or download the [upstream repository](https://github.com/cavefire/Bose-Homeassistant).
 2. Copy the `custom_components` directory of this repository to your Home Assistant `config` directory.
 3. Restart Home Assistant.
 
@@ -87,9 +114,9 @@ To remove a speaker from the group, use the service `media_player.unjoin`. If th
 
 - `bose.send_custom_request` - Send a custom request to the speaker. This can be used to control features that are not yet implemented in the integration and for debugging purposes.
 
-### Supported Devices
+### Devices reported as tested by upstream
 
-All devices commected via WiFi and controllable using the BOSE App should work. Here is the list of devices, that have been tested:
+Upstream aims to support devices connected via WiFi and controlled using the BOSE App. The following device reports are inherited from upstream; this fork has not independently verified them:
 
 **Soundbars:**
 - [x] Soundbar 500
@@ -113,16 +140,16 @@ These devices only work with the features that are marked as completed above. So
 This project is a work in progress, and contributions are welcome!
 If you encounter issues, have feature requests, or want to contribute, feel free to submit a pull request or open an issue.
 
-My goal is to split the integration from the `pybose` library, so that it can be used in other projects as well. So every function that is calling the speaker's websocket, should be implemented in the `pybose` library. The integration should only be responsible for the Home Assistant part.
+The upstream architecture separates the integration from the `pybose` library so that the library can also be used in other projects. So every function that is calling the speaker's websocket, should be implemented in the `pybose` library. The integration should only be responsible for the Home Assistant part.
 
-If you like this project, consider supporting me 
+To support the original author's work, the following donation link belongs to **cavefire**, not to the fork maintainer: 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://www.buymeacoffee.com/cavefire)
 
 
 ## Disclaimer
 This project is not affiliated with Bose Corporation. The API is reverse-engineered and may break at any time. Use at your own risk.
 
-**To the BOSE legal team:**
+**Original author's note to the BOSE legal team (retained from cavefire's README):**
 
 All API keys used in this project are publicly available on the Bose website.
 
