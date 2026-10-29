@@ -161,6 +161,8 @@ class BoseAccessorySwitch(BoseBaseEntity, SwitchEntity):
 
     async def async_update(self) -> None:
         """Update the switch state."""
+        if not self.speaker.is_connected():
+            return
         try:
             accessories = await self.speaker.get_accessories()
         except Exception:  # noqa: BLE001
@@ -250,6 +252,8 @@ class BoseStandbySettingSwitch(BoseBaseEntity, SwitchEntity):
 
     async def async_update(self) -> None:
         """Update the switch state."""
+        if not self.speaker.is_connected():
+            return
         try:
             timeouts = await self.speaker.get_system_timeout()
         except Exception:  # noqa: BLE001

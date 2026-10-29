@@ -32,6 +32,7 @@ class BoseCoordinatorData:
 
     cached_messages: dict[str, CachedMessage] = field(default_factory=dict)
     last_update: datetime | None = None
+    connected: bool = False
 
 
 class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
@@ -48,13 +49,14 @@ class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{device_id}",
-            update_interval=timedelta(minutes=5),
+            update_interval=timedelta(seconds=30),
+            always_update=True,
         )
         self.speaker = speaker
         self.device_id = device_id
 
         # Initialize with empty data
-        self.data = BoseCoordinatorData()
+        self.data = BoseCoordinatorData(connected=speaker.is_connected())
 
         # Attach receiver to cache messages
         self.speaker.attach_receiver(self._cache_message)  # type: ignore[arg-type]
@@ -266,5 +268,9 @@ class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
 
     async def _async_update_data(self) -> BoseCoordinatorData:
         """Fetch data from speaker."""
+        connected = self.speaker.is_connected()
+        if connected != self.data.connected:
+            self.data.cached_messages.clear()
+        self.data.connected = connected
         self.data.last_update = datetime.now()
         return self.data

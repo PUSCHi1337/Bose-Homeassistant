@@ -56,6 +56,7 @@ class BoseBatteryBase:
         """Parse real-time messages from the speaker."""
         if data.get("header", {}).get("resource") == "/system/battery":
             self.update_from_battery_status(Battery(data.get("body")))
+            self._attr_available = True
 
     def update_from_battery_status(self, battery_status: Battery):
         """Implmented in sensor."""
@@ -74,11 +75,17 @@ class BoseBatteryBase:
         """
         if not getattr(self, "hass", None):
             return
+        if not self.speaker.is_connected():
+            return
         try:
             battery_data = await self.coordinator.get_battery_status()
             battery_status = Battery(battery_data)
             self.update_from_battery_status(battery_status)
         except Exception:  # noqa: BLE001
-            _LOGGER.exception(
-                "Error updating battery status for %s", self.config_entry.data["ip"]
-            )
+            if self._attr_available and self.speaker.is_connected():
+                _LOGGER.exception(
+                    "Error updating battery status for %s", self.config_entry.data["ip"]
+                )
+            self._attr_available = False
+        else:
+            self._attr_available = True

@@ -530,6 +530,17 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
                 self._attr_source_list.append(self._attr_source)
 
     async def async_update(self) -> None:
+        """Skip an offline transport; preserve genuine connected errors."""
+        if not self.speaker.is_connected():
+            return
+        try:
+            await self._async_update_connected()
+        except Exception:
+            self._attr_available = False
+            if self.speaker.is_connected():
+                raise
+
+    async def _async_update_connected(self) -> None:
         """Fetch new state data from the speaker."""
         data_dict = await self.coordinator.get_now_playing()
         data = ContentNowPlaying(data_dict)
@@ -615,6 +626,7 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
             if linked_entity_id:
                 self._update_from_linked_media_player(linked_entity_id)
 
+        self._attr_available = True
         self.async_write_ha_state()
 
     async def async_select_source(self, source: str) -> None:

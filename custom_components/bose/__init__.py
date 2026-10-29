@@ -378,7 +378,14 @@ async def reconnection_monitor(
                  if item["guid"] == config_entry.data["guid"]), None
             )
             if device is None:
-                raise ConnectionError("Speaker not found by mDNS")
+                # An intentionally powered-off speaker is a normal absence.
+                retry_at = monotonic() + retry_delay
+                _LOGGER.debug(
+                    "Bose speaker offline; next discovery in %s seconds",
+                    retry_delay,
+                )
+                retry_delay = min(retry_delay * 2, RECONNECT_MAX_DELAY)
+                continue
             # Never replace the client retained by entities/coordinator/callbacks.
             await speaker.reconnect(host=device["ip"])
             if device["ip"] != config_entry.data.get("ip"):

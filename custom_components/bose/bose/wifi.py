@@ -40,6 +40,7 @@ class BoseWifiBase:
         """Parse real-time messages from the speaker."""
         if data.get("header", {}).get("resource") == "/network/wifi/status":
             self.update_from_wifi_status(WifiStatus(data.get("body")))
+            self._attr_available = True
             if self.hass and hasattr(self, "async_write_ha_state"):
                 self.async_write_ha_state()
 
@@ -49,11 +50,17 @@ class BoseWifiBase:
 
     async def async_update(self) -> None:
         """Fetch the latest WiFi status."""
+        if not self.speaker.is_connected():
+            return
         try:
             wifi_data = await self.coordinator.get_wifi_status()
             wifi_status = WifiStatus(wifi_data)
             self.update_from_wifi_status(wifi_status)
         except Exception:  # noqa: BLE001
-            _LOGGER.exception(
-                "Error updating WiFi status for %s", self.config_entry.data["ip"]
-            )
+            if self._attr_available and self.speaker.is_connected():
+                _LOGGER.exception(
+                    "Error updating WiFi status for %s", self.config_entry.data["ip"]
+                )
+            self._attr_available = False
+        else:
+            self._attr_available = True

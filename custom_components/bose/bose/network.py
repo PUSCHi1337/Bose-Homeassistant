@@ -39,6 +39,7 @@ class BoseNetworkBase:
         """Parse real-time messages from the speaker."""
         if data.get("header", {}).get("resource") == "/network/status":
             self.update_from_network_status(NetworkStatus(data.get("body")))
+            self._attr_available = True
             if self.hass and hasattr(self, "async_write_ha_state"):
                 self.async_write_ha_state()
 
@@ -50,11 +51,17 @@ class BoseNetworkBase:
 
     async def async_update(self) -> None:
         """Fetch the latest network status."""
+        if not self.speaker.is_connected():
+            return
         try:
             network_data = await self.coordinator.get_network_status()
             network_status = NetworkStatus(network_data)
             self.update_from_network_status(network_status)
         except Exception:  # noqa: BLE001
-            _LOGGER.exception(
-                "Error updating network status for %s", self.config_entry.data["ip"]
-            )
+            if self._attr_available and self.speaker.is_connected():
+                _LOGGER.exception(
+                    "Error updating network status for %s", self.config_entry.data["ip"]
+                )
+            self._attr_available = False
+        else:
+            self._attr_available = True

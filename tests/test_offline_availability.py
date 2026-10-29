@@ -138,6 +138,9 @@ async def test_connected_sensor_errors_are_visible_once_and_rearm_after_success(
         read.side_effect = RuntimeError("another online error")
         await entity.async_update()
     assert len([r for r in caplog.records if r.name == "bose" and r.levelno >= logging.WARNING]) == 2
+    resource = {"network": "/network/status", "wifi": "/network/wifi/status", "battery": "/system/battery"}[kind]
+    entity._parse_message({"header": {"resource": resource}, "body": response})
+    assert entity.available, "A successful push must also restore availability"
 
 
 async def test_connected_slider_failures_remain_visible_without_repeated_warnings(

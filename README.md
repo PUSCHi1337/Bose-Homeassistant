@@ -13,7 +13,12 @@ unofficial and is not affiliated with Bose Corporation.
 The integration uses the companion [pybose fork](https://github.com/PUSCHi1337/pybose).
 Development changes cover discovery resource cleanup, coordinated reconnects,
 entry-owned background tasks, bounded mDNS recovery and a stable client retained
-by entities and callbacks after an IP-address change. Accessory switches omitted
+by entities and callbacks after an IP-address change. A shared connection check
+updates availability, including push-only media players, and refreshes entity data
+after reconnect. Known-offline polls are skipped, stale caches are cleared across
+connection changes, and repeated errors are logged once per failure until recovery.
+Normal absence during mDNS discovery is debug-only; unexpected discovery errors
+remain visible. Accessory switches omitted
 while the speaker is in standby are discovered later by one read-only status poll
 per minute while connected. Discovery stops once both controls exist and is
 cancelled when the entry unloads; existing entity identities are retained.

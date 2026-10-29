@@ -159,9 +159,14 @@ class BoseAudioSlider(BoseBaseEntity, NumberEntity):
 
     async def async_update(self) -> None:
         """Fetch the current value of the setting."""
+        if not self.speaker.is_connected():
+            return
         try:
             audio = Audio(await self.coordinator.get_audio_setting(self._option))
         except Exception:  # noqa: BLE001
+            if not self.speaker.is_connected():
+                self._attr_available = False
+                return
             _LOGGER.debug(
                 "pybose rejected reading %s, asking the speaker directly",
                 self._option,
@@ -170,11 +175,12 @@ class BoseAudioSlider(BoseBaseEntity, NumberEntity):
             audio = await read_setting(self.speaker, self._option)
 
         if audio is None:
-            _LOGGER.warning(
-                "Cannot read audio setting %s from %s",
-                self._option,
-                self.config_entry.data.get("ip"),
-            )
+            if self._attr_available and self.speaker.is_connected():
+                _LOGGER.warning(
+                    "Cannot read audio setting %s from %s",
+                    self._option,
+                    self.config_entry.data.get("ip"),
+                )
             if self._attr_available:
                 self._attr_available = False
                 self._write_state()
