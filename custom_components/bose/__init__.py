@@ -298,10 +298,10 @@ async def refresh_token_thread(
                 config_entry.data["mail"],
             )
             await hass.config_entries.flow.async_init(
-                    DOMAIN,
-                    context={"source": "reauth", "entry_id": config_entry.entry_id},
-                    data=config_entry.data,
-                )
+                DOMAIN,
+                context={"source": "reauth", "entry_id": config_entry.entry_id},
+                data=config_entry.data,
+            )
             # Stop the refresh loop after triggering reauth
             break
         await asyncio.sleep(TOKEN_RETRY_DELAY)
