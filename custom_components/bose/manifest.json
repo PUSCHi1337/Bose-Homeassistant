@@ -2,20 +2,20 @@
   "domain": "bose",
   "name": "Bose",
   "codeowners": [
-    "@cavefire"
+    "@PUSCHi1337"
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/cavefire/Bose-Homeassistant",
+  "documentation": "https://github.com/PUSCHi1337/Bose-Homeassistant",
   "homekit": {},
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/cavefire/Bose-Homeassistant/issues",
+  "issue_tracker": "https://github.com/PUSCHi1337/Bose-Homeassistant/pulls",
   "requirements": [
-    "pybose==2026.10.2",
+    "pybose @ https://github.com/PUSCHi1337/pybose/archive/4fc26d5b19145671d47807fee4049036ad215104.zip",
     "pychromecast>=13.0.0"
   ],
   "ssdp": [],
-  "version": "1.3.5",
+  "version": "1.3.5.post1",
   "zeroconf": [
     "_bose-passport._tcp.local."
   ]

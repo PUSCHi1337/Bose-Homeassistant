@@ -127,6 +127,9 @@ class Coordinator:
     async def async_config_entry_first_refresh(self):
         pass
 
+    async def async_shutdown(self):
+        pass
+
 
 @asynccontextmanager
 async def setup_rig(monkeypatch):
