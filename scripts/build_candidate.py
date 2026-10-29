@@ -21,7 +21,7 @@ if match is None:
     raise SystemExit("The candidate must pin one immutable fork library archive")
 source = {
     "integration_repository": "PUSCHi1337/Bose-Homeassistant",
-    "integration_commit": os.environ["GITHUB_SHA"],
+    "integration_commit": os.environ["SOURCE_COMMIT"],
     "library_repository": "PUSCHi1337/pybose",
     "library_commit": match.group(1),
     "library_requirement": requirement,
