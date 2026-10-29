@@ -18,6 +18,7 @@ from bose.sensor import (
 )
 from bose.switch import BoseStandbySettingSwitch, BoseSubwooferSwitch
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.frame import async_setup as setup_frame
 
 from .conftest import FakeHass, FakeSpeaker
 
@@ -171,6 +172,7 @@ async def test_connected_slider_retains_the_raw_getter_fallback(monkeypatch):
 
 async def test_coordinator_invalidates_old_cache_on_both_connection_edges(tmp_path):
     hass = HomeAssistant(str(tmp_path))
+    setup_frame(hass)
     speaker = FakeSpeaker()
     coordinator = BoseCoordinator(hass, speaker, "device-1")
     try:
@@ -191,6 +193,7 @@ async def test_coordinator_invalidates_old_cache_on_both_connection_edges(tmp_pa
 
 async def test_entity_connection_listener_updates_and_is_removed_on_unload(tmp_path):
     hass = HomeAssistant(str(tmp_path))
+    setup_frame(hass)
     speaker = FakeSpeaker()
     coordinator = BoseCoordinator(hass, speaker, "device-1")
     hass.data[DOMAIN] = {"entry": {"coordinator": coordinator}}
@@ -256,3 +259,11 @@ async def test_missing_offline_device_is_quiet_but_discovery_errors_are_visible(
             await bose.reconnection_monitor(hass, entry, None)
     warnings = [r for r in caplog.records if r.name == "bose" and r.levelno >= logging.WARNING]
     assert bool(warnings) is discovery_fails
+
+
+async def test_connected_media_failure_stays_visible_and_marks_data_unavailable():
+    entity, _, coordinator, _ = make_entity("media")
+    coordinator.get_now_playing.side_effect = RuntimeError("genuine online error")
+    with pytest.raises(RuntimeError, match="genuine online error"):
+        await entity.async_update()
+    assert not entity.available
