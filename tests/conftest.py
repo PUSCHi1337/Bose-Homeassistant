@@ -39,6 +39,7 @@ class FakeSpeaker:
     ) -> None:
         """Initialize the fake speaker."""
         self.capabilities = capabilities
+        self.connected = True
         # Bodies returned per resource, e.g. {"/audio/bass": {"value": 3}}.
         self.values = values or {}
         # Options pybose's own getters/setters accept; everything else raises,
@@ -48,6 +49,10 @@ class FakeSpeaker:
         self.requests: list[dict[str, Any]] = []
         self.settings: dict[str, int] = {}
         self.hangs = False
+
+    def is_connected(self) -> bool:
+        """Return the current transport state."""
+        return self.connected
 
     def get_device_id(self) -> str:
         """Return a stable device id."""
