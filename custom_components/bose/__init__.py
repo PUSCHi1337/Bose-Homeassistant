@@ -1,6 +1,7 @@
 """The Bose component."""
 
 import asyncio
+import errno
 import json
 from time import monotonic
 
@@ -583,7 +584,18 @@ async def connect_to_bose(
         raise
     except Exception as e:  # noqa: BLE001
         await speaker.disconnect()
-        _LOGGER.warning("Failed to connect to Bose speaker: %s", e)
+        offline = isinstance(e, (ConnectionError, TimeoutError)) or (
+            isinstance(e, OSError)
+            and e.errno in {
+                errno.ECONNREFUSED, errno.ECONNRESET, errno.ECONNABORTED,
+                errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ENETDOWN,
+                errno.ETIMEDOUT,
+            }
+        )
+        if offline:
+            _LOGGER.debug("Bose speaker is offline during setup: %s", e)
+        else:
+            _LOGGER.warning("Failed to connect to Bose speaker: %s", e)
         return None
 
     return speaker
