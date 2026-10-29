@@ -1,5 +1,7 @@
 """Support for Bose power switch."""
 
+from asyncio import Task, current_task
+from datetime import datetime, timedelta
 from typing import Any
 
 from pybose.BoseResponse import Accessories, SystemInfo, SystemTimeout
@@ -8,8 +10,9 @@ from pybose.BoseSpeaker import BoseSpeaker
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import _LOGGER, DOMAIN
 from .entity import BoseBaseEntity
@@ -35,22 +38,78 @@ async def async_setup_entry(
     else:
         _LOGGER.debug("Speaker does not support system timeouts")
 
-    if accessories:
-        if accessories.get("controllable", {}).get("subs", False):
-            entities.append(
-                BoseSubwooferSwitch(speaker, system_info, accessories, config_entry)
-            )
-        if accessories.get("controllable", {}).get("rears", False):
-            entities.append(
-                BoseRearSpeakerSwitch(speaker, system_info, accessories, config_entry)
-            )
+    added_accessories: set[str] = set()
 
-    # Add switch entity with device info
-    async_add_entities(
-        entities,
-        update_before_add=False,
+    def _create_accessory_switches(data: Accessories) -> list[SwitchEntity]:
+        """Create each supported switch once, including after late discovery."""
+        if not data:
+            return []
+        controllable = data.get("controllable") or {}
+        new_entities: list[SwitchEntity] = []
+        for attribute, entity_class in (
+            ("subs", BoseSubwooferSwitch),
+            ("rears", BoseRearSpeakerSwitch),
+        ):
+            if controllable.get(attribute) and attribute not in added_accessories:
+                new_entities.append(
+                    entity_class(speaker, system_info, data, config_entry)
+                )
+                added_accessories.add(attribute)
+        return new_entities
+
+    entities.extend(_create_accessory_switches(accessories))
+    async_add_entities(entities, update_before_add=False)
+
+    # A standby response (or failed first read) can omit controllable accessories.
+    # Restored registry entries cannot poll themselves until their entities exist.
+    if len(added_accessories) == 2 or not speaker.has_capability("/accessories"):
+        return
+
+    runtime = hass.data[DOMAIN][config_entry.entry_id]
+    refresh_task: Task[None] | None = None
+    cancel_interval = None
+    stopped = False
+
+    @callback
+    def _stop_discovery() -> None:
+        nonlocal stopped
+        stopped = True
+        if cancel_interval is not None:
+            cancel_interval()
+        if refresh_task is not None and refresh_task is not current_task():
+            refresh_task.cancel()
+
+    async def _async_refresh_accessories() -> None:
+        if not speaker.is_connected():
+            return
+        try:
+            data = await speaker.get_accessories()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Accessories not ready for discovery", exc_info=True)
+            return
+        if stopped:
+            return
+        runtime["accessories"] = data
+        new_entities = _create_accessory_switches(data)
+        if new_entities:
+            async_add_entities(new_entities, update_before_add=False)
+        if len(added_accessories) == 2:
+            _stop_discovery()
+
+    @callback
+    def _schedule_refresh(_now: datetime) -> None:
+        nonlocal refresh_task
+        if stopped or (refresh_task is not None and not refresh_task.done()):
+            return
+        refresh_task = config_entry.async_create_background_task(
+            hass, _async_refresh_accessories(), "Bose accessory discovery",
+            eager_start=False,
+        )
+
+    cancel_interval = async_track_time_interval(
+        hass, _schedule_refresh, timedelta(seconds=60)
     )
-
+    config_entry.async_on_unload(_stop_discovery)
 
 class BoseAccessorySwitch(BoseBaseEntity, SwitchEntity):
     """Generic accessory switch for Bose speakers."""

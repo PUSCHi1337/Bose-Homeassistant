@@ -86,6 +86,7 @@ import pytest
 
 from bose import switch as switch_platform
 from bose.const import DOMAIN
+from homeassistant.core import HassJob, HassJobType
 
 _ACCESSORIES = {
     "controllable": {"subs": True, "rears": True},
@@ -251,6 +252,7 @@ async def test_unsupported_speaker_never_starts_accessory_discovery(monkeypatch)
 async def test_discovery_is_single_flight_and_cancelled_on_unload(monkeypatch):
     context = await _discovery_setup(monkeypatch, [])
     assert len(context.timers) == 1, "Missing retry for late accessory discovery"
+    assert HassJob(context.timers[0].callback).job_type is HassJobType.Callback
     started = asyncio.Event()
     never_finishes = asyncio.Event()
 

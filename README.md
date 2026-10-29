@@ -13,7 +13,10 @@ unofficial and is not affiliated with Bose Corporation.
 The integration uses the companion [pybose fork](https://github.com/PUSCHi1337/pybose).
 Development changes cover discovery resource cleanup, coordinated reconnects,
 entry-owned background tasks, bounded mDNS recovery and a stable client retained
-by entities and callbacks after an IP-address change.
+by entities and callbacks after an IP-address change. Accessory switches omitted
+while the speaker is in standby are discovered later by one read-only status poll
+per minute while connected. Discovery stops once both controls exist and is
+cancelled when the entry unloads; existing entity identities are retained.
 
 The current changes are in the [fork pull requests](https://github.com/PUSCHi1337/Bose-Homeassistant/pulls).
 [Offline CI](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml)
