@@ -11,8 +11,8 @@ component = root / "custom_components" / "bose"
 output = root / "dist"
 output.mkdir(exist_ok=True)
 manifest = json.loads((component / "manifest.json").read_text())
-requirement = next(r for r in manifest["requirements"] if r.startswith("pybose @ "))
-library_url = requirement.split(" @ ", 1)[1]
+requirement = next(r for r in manifest["requirements"] if r.startswith("pybose@"))
+library_url = requirement.split("@", 1)[1]
 match = re.fullmatch(
     r"https://github.com/PUSCHi1337/pybose/archive/([a-f0-9]{40})\.zip",
     library_url,

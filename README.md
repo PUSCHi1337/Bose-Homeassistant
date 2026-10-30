@@ -36,28 +36,25 @@ CI uses Home Assistant 2026.10.4 and blocks network sockets in tests.
 See [validation and known limits](VALIDATION.md) for exact source references
 and the scope of the limited passive device checks.
 
-No public fork release is available yet. The protected `main` branch contains the
-development source; use a successful CI candidate when testing before release.
+The first public preview is [v1.3.5.post7](https://github.com/PUSCHi1337/Bose-Homeassistant/releases/tag/v1.3.5.post7).
+It is marked as a GitHub pre-release. Accessory recovery after a standby restart
+and longer resource monitoring remain open; see [VALIDATION.md](VALIDATION.md).
 
 ## Installation and rollback
 
-The successful [Offline integration tests workflow](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml)
-provides a `bose-stability-candidate` artifact containing the installable ZIP,
-source references, SHA-256 checksums and rollback instructions. It is a test
-candidate, not a stable release. GitHub may require sign-in to download artifacts.
+Use the [installation guide](INSTALL.md) to add this fork as a HACS custom
+repository and select the preview, or install from the release's source ZIP.
+Home Assistant installs the pinned companion library automatically. No separate
+pybose installation is required.
 
-Preserve the existing integration directory and take a Home Assistant backup.
-Verify the artifact checksum, then replace only `custom_components/bose`.
-The paired library is installed through its manifest requirement. Restart
-Home Assistant when the short outage is acceptable and verify the entity states
-and logs. See [ROLLBACK.md](ROLLBACK.md) for the full return path.
+Take a Home Assistant backup first. When replacing an existing Bose installation,
+preserve its configuration entry and use only one `custom_components/bose`
+directory. A planned HA restart is needed after changing the installed files.
+See [ROLLBACK.md](ROLLBACK.md) for the return path.
 
-To return to the original dependency, restore the previous integration and its
-manifest requirement `pybose==2026.10.2`, then restart Home Assistant.
-The fork library has a distinct version so HA can reinstall the original library.
-
-The manual **Prepare release bundle** workflow only builds review artifacts.
-It does not create tags, delete drafts, publish releases or upload to PyPI.
+CI artifacts remain development candidates with source references and SHA-256
+checksums. The manual **Prepare release bundle** workflow builds these review
+artifacts; it does not create tags, delete drafts, publish releases or upload to PyPI.
 
 ## Setup and authentication
 

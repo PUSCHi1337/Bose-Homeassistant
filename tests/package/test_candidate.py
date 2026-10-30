@@ -8,6 +8,8 @@ import re
 import sys
 import zipfile
 
+from homeassistant.util.package import parse_requirement_safe
+
 ROOT = Path(__file__).resolve().parents[2]
 ARCHIVE = ROOT / "dist" / "bose-stability-candidate.zip"
 
@@ -24,10 +26,13 @@ def test_candidate_checksum_and_immutable_library_source():
         source = json.loads(archive.read("SOURCE.json"))
         assert re.fullmatch("[a-f0-9]{40}", source["integration_commit"])
         assert re.fullmatch("[a-f0-9]{40}", source["library_commit"])
-        requirement = "pybose @ https://github.com/PUSCHi1337/pybose/archive/" + source["library_commit"] + ".zip"
+        requirement = "pybose@https://github.com/PUSCHi1337/pybose/archive/" + source["library_commit"] + ".zip"
         assert requirement in manifest["requirements"]
+        parsed = parse_requirement_safe(requirement)
+        assert parsed is not None and parsed.name == "pybose"
+        assert parsed.url == "https://github.com/PUSCHi1337/pybose/archive/" + source["library_commit"] + ".zip"
         direct = json.loads(distribution("pybose").read_text("direct_url.json"))
-        assert direct["url"] == requirement.split(" @ ", 1)[1]
+        assert direct["url"] == requirement.split("@", 1)[1]
         assert version("pybose") == "2026.10.2.post2"
         assert archive.read("custom_components/bose/LICENSE") == (ROOT / "LICENSE").read_bytes()
         assert "ROLLBACK.md" in names

@@ -5,9 +5,12 @@
 The installed runtime candidate is integration **1.3.5.post7** from
 `f3060b1c677ee05047aace3ef3a8a44711067231`, paired with the immutable pybose
 source `bfcce6fc33a6a174484acd09ba0f30c1513843a0` (package version
-`2026.10.2.post2`). Repository preparation changes only documentation,
-artifact metadata and workflow behavior; the HA runtime code and library pin
-remain unchanged.
+`2026.10.2.post2`). Repository preparation updates documentation,
+artifact metadata, workflow behavior and requirement notation. The manifest's
+named library URL uses
+compact PEP 508 notation (`pybose@https://...`) to satisfy Hassfest's no-space
+rule. The Python runtime code, package versions and exact library source remain
+unchanged.
 
 [Baseline CI](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/runs/41030871351):
 112 integration tests, 174 library tests with the HA dependency set and two
@@ -47,8 +50,9 @@ resource-stability guarantees. No audio or TTS playback test is implied.
   TCP-timeout/stop race is reproduced through the real installed PyChromecast code
   in CI; it is not inferred solely from an empty live log.
 - Longer resource monitoring and broader device/firmware coverage remain open.
-- A public stable release and ordinary HACS update path are separate from the
-  reviewed source and CI installation candidate.
+- The first public preview is distributed through a GitHub pre-release and can
+  be selected through a HACS custom repository; see [INSTALL.md](INSTALL.md).
+  A public stable release remains a separate decision after further observation.
 
 Home network addresses, authentication material, private entity IDs and raw
 household logs are intentionally absent from this report.
