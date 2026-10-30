@@ -1,0 +1,82 @@
+name: Offline integration tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Validate GitHub Actions workflow syntax
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" --workdir /repo rhysd/actionlint:1.7.12 -color
+      - name: Install test dependencies and declared integration requirements
+        run: |
+          python -m pip install -r tests/requirements.txt
+          python - <<'PY'
+          import json, subprocess, sys
+          requirements = json.load(open("custom_components/bose/manifest.json"))["requirements"]
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *requirements])
+          PY
+      - name: Run all integration unit tests without network sockets
+        run: python -m pytest tests --ignore=tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/integration.xml -q
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-unit-results
+          path: junit/integration.xml
+      - name: Check out the pinned library tests
+        uses: actions/checkout@v4
+        with:
+          repository: PUSCHi1337/pybose
+          ref: bfcce6fc33a6a174484acd09ba0f30c1513843a0
+          path: library-source
+      - name: Run library regressions with the Home Assistant dependency set
+        run: python -m pytest library-source/tests/unit --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/library-with-ha.xml -q
+      - name: Build the candidate archive
+        run: python scripts/build_candidate.py
+      - name: Verify packaged platform imports without network sockets
+        run: python -m pytest tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/package.xml -q
+      - name: Verify rollback installs the original library
+        run: |
+          python -m pip install pybose==2026.10.2
+          python - <<'PY'
+          from importlib.metadata import version
+          from homeassistant.util.package import is_installed
+          from pybose.BoseSpeaker import BoseSpeaker
+          assert version("pybose") == "2026.10.2"
+          assert is_installed("pybose==2026.10.2")
+          assert not hasattr(BoseSpeaker, "reconnect")
+          PY
+      - name: Verify reinstalling the pinned candidate library
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          requirement = json.load(open("custom_components/bose/manifest.json"))["requirements"][0]
+          subprocess.check_call([sys.executable, "-m", "pip", "install", requirement])
+          PY
+          python -m pytest tests/package --disable-socket --allow-unix-socket --timeout=10 -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bose-stability-candidate
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: complete-offline-test-results
+          path: junit/

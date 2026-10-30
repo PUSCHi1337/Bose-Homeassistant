@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from time import monotonic
 
 from pybose.BoseAuth import BoseAuth, BoseAuthRejectedError
 from pybose.BoseResponse import Accessories, NetworkStateEnum
@@ -26,6 +27,7 @@ from . import config_flow
 from .const import (
     _LOGGER,
     DOMAIN,
+    is_offline_error,
     REQUEST_TIMEOUT,
     TOKEN_REFRESH_DELAY,
     TOKEN_RETRY_DELAY,
@@ -61,7 +63,29 @@ def async_migrate_unique_id(hass: HomeAssistant, config_entry: ConfigEntry) -> N
     hass.config_entries.async_update_entry(config_entry, unique_id=guid)
 
 
+PLATFORMS = [
+    "media_player", "select", "number", "sensor", "binary_sensor", "switch", "button"
+]
+RECONNECT_CHECK_INTERVAL = 30
+RECONNECT_MAX_DELAY = 300
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Set up an entry and close partial resources on failure or cancellation."""
+    try:
+        result = await _async_setup_entry(hass, config_entry)
+        if not result:
+            await _async_stop_entry(hass, config_entry)
+        return result
+    except BaseException:
+        try:
+            await _async_stop_entry(hass, config_entry)
+        except Exception:
+            _LOGGER.exception("Failed to clean up a partial Bose setup")
+        raise
+
+
+async def _async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Bose integration from a config entry."""
     async_migrate_unique_id(hass, config_entry)
 
@@ -149,19 +173,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             f"Cannot reach the Bose speaker at {config_entry.data['ip']}"
         )
 
+    hass.data[DOMAIN][config_entry.entry_id]["speaker"] = speaker
     try:
         system_info = await speaker.get_system_info()
         capabilities = await speaker.get_capabilities()
         await speaker.subscribe()
     except Exception as err:
-        await speaker.disconnect()
         raise ConfigEntryNotReady(
             f"The Bose speaker at {config_entry.data['ip']} did not answer during setup: {err}"
         ) from err
-
-    hass.async_create_background_task(
-        refresh_token_thread(hass, config_entry, auth), "Refresh token"
-    )
 
     # Register device in Home Assistant
     device_registry = dr.async_get(hass)
@@ -230,25 +250,18 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         accessories = []
     hass.data[DOMAIN][config_entry.entry_id]["accessories"] = accessories
 
-    hass.async_create_background_task(
-        reconnection_monitor(hass, config_entry, auth),
-        "Bose reconnection monitor",
-    )
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
-    # Forward to media player platform
-    await hass.config_entries.async_forward_entry_setups(
-        config_entry,
-        [
-            "media_player",
-            "select",
-            "number",
-            "sensor",
-            "binary_sensor",
-            "switch",
-            "button",
-        ],
-    )
-
+    # Fork change, 2026-10-29: entry ownership plus explicit awaited cleanup.
+    tasks = hass.data[DOMAIN][config_entry.entry_id].setdefault("tasks", [])
+    tasks.append(config_entry.async_create_background_task(
+        hass, refresh_token_thread(hass, config_entry, auth),
+        "Bose token refresh", eager_start=False,
+    ))
+    tasks.append(config_entry.async_create_background_task(
+        hass, reconnection_monitor(hass, config_entry, auth),
+        "Bose reconnection monitor", eager_start=False,
+    ))
     return True
 
 
@@ -285,12 +298,10 @@ async def refresh_token_thread(
                 "Authentication failed for %s, starting reauthentication flow",
                 config_entry.data["mail"],
             )
-            hass.async_create_task(
-                hass.config_entries.flow.async_init(
-                    DOMAIN,
-                    context={"source": "reauth", "entry_id": config_entry.entry_id},
-                    data=config_entry.data,
-                )
+            await hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={"source": "reauth", "entry_id": config_entry.entry_id},
+                data=config_entry.data,
             )
             # Stop the refresh loop after triggering reauth
             break
@@ -343,133 +354,92 @@ async def refresh_token(hass: HomeAssistant, config_entry: ConfigEntry, auth: Bo
 async def reconnection_monitor(
     hass: HomeAssistant, config_entry: ConfigEntry, auth: BoseAuth
 ):
-    """Monitor speaker connection and attempt reconnection via mDNS if offline."""
-    CHECK_INTERVAL = 30
-    RECONNECT_DELAY = 10
-
-    while True:
-        await asyncio.sleep(CHECK_INTERVAL)
-
-        if not hass.config_entries.async_get_entry(config_entry.entry_id):
-            _LOGGER.debug("Config entry removed, stopping reconnection monitor")
-            break
-
-        speaker = hass.data[DOMAIN].get(config_entry.entry_id, {}).get("speaker")
-        if not speaker:
-            _LOGGER.debug("Speaker object not found, stopping reconnection monitor")
-            break
-
-        if not speaker.is_connected():
-            _LOGGER.warning(
-                "Speaker %s is disconnected, attempting reconnection via mDNS discovery",
-                config_entry.data.get("guid"),
+    """Recover the same client, with bounded mDNS discovery attempts."""
+    runtime = hass.data.get(DOMAIN, {}).get(config_entry.entry_id)
+    retry_at = 0.0
+    retry_delay = RECONNECT_CHECK_INTERVAL
+    while runtime and not runtime.get("stopping"):
+        await asyncio.sleep(RECONNECT_CHECK_INTERVAL)
+        if (hass.data.get(DOMAIN, {}).get(config_entry.entry_id) is not runtime
+                or runtime.get("stopping")):
+            return
+        speaker = runtime.get("speaker")
+        if speaker is None:
+            return
+        if speaker.is_connected():
+            retry_at = 0.0
+            retry_delay = RECONNECT_CHECK_INTERVAL
+            continue
+        if monotonic() < retry_at:
+            continue
+        try:
+            discovered = await config_flow.Discover_Bose_Devices(hass)
+            device = next(
+                (item for item in discovered
+                 if item["guid"] == config_entry.data["guid"]), None
             )
-
-            await asyncio.sleep(RECONNECT_DELAY)
-
-            try:
-                discovered = await config_flow.Discover_Bose_Devices(hass)
-                found = False
-
-                for device in discovered:
-                    if device["guid"] == config_entry.data["guid"]:
-                        current_ip = config_entry.data.get("ip")
-                        new_ip = device["ip"]
-
-                        if current_ip != new_ip:
-                            _LOGGER.info(
-                                "Device %s found with new IP %s (was %s), updating configuration",
-                                config_entry.data["guid"],
-                                new_ip,
-                                current_ip,
-                            )
-                            hass.config_entries.async_update_entry(
-                                config_entry,
-                                data={**config_entry.data, "ip": new_ip},
-                            )
-                        else:
-                            _LOGGER.info(
-                                "Device %s found at same IP %s, attempting reconnection",
-                                config_entry.data["guid"],
-                                current_ip,
-                            )
-
-                        new_speaker = await connect_to_bose(
-                            hass,
-                            hass.config_entries.async_get_entry(config_entry.entry_id)
-                            or config_entry,
-                            auth,
-                        )
-
-                        if new_speaker:
-                            try:
-                                await speaker.disconnect()
-                            except Exception:  # noqa: BLE001
-                                pass
-
-                            hass.data[DOMAIN][config_entry.entry_id]["speaker"] = (
-                                new_speaker
-                            )
-                            coordinator = hass.data[DOMAIN][config_entry.entry_id].get(
-                                "coordinator"
-                            )
-                            if coordinator:
-                                coordinator.speaker = new_speaker
-                                new_speaker.attach_receiver(
-                                    coordinator._cache_message  # noqa: SLF001
-                                )
-
-                            await new_speaker.subscribe()
-
-                            _LOGGER.info(
-                                "Successfully reconnected to device %s at %s",
-                                config_entry.data["guid"],
-                                device["ip"],
-                            )
-                            found = True
-                        break
-
-                if not found:
-                    _LOGGER.warning(
-                        "Device %s not found via mDNS discovery, will retry",
-                        config_entry.data["guid"],
-                    )
-
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception(
-                    "Error during reconnection attempt for %s",
-                    config_entry.data["guid"],
+            if device is None:
+                # An intentionally powered-off speaker is a normal absence.
+                retry_at = monotonic() + retry_delay
+                _LOGGER.debug(
+                    "Bose speaker offline; next discovery in %s seconds",
+                    retry_delay,
                 )
+                retry_delay = min(retry_delay * 2, RECONNECT_MAX_DELAY)
+                continue
+            # Never replace the client retained by entities/coordinator/callbacks.
+            await speaker.reconnect(host=device["ip"])
+            if device["ip"] != config_entry.data.get("ip"):
+                hass.config_entries.async_update_entry(
+                    config_entry, data={**config_entry.data, "ip": device["ip"]}
+                )
+            retry_at = 0.0
+            retry_delay = RECONNECT_CHECK_INTERVAL
+            _LOGGER.info("Bose speaker connection recovered")
+        except Exception as err:
+            retry_at = monotonic() + retry_delay
+            if is_offline_error(err):
+                _LOGGER.debug(
+                    "Bose speaker not ready; next discovery in %s seconds: %s",
+                    retry_delay, err,
+                )
+            else:
+                _LOGGER.warning(
+                    "Bose recovery failed; next discovery in %s seconds: %s",
+                    retry_delay, err,
+                )
+            retry_delay = min(retry_delay * 2, RECONNECT_MAX_DELAY)
+
+
+async def _async_stop_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+    """Await every owned task before closing the client and removing runtime."""
+    runtime = hass.data.get(DOMAIN, {}).get(config_entry.entry_id)
+    if runtime is None:
+        return
+    runtime["stopping"] = True
+    current = asyncio.current_task()
+    tasks = [task for task in runtime.get("tasks", [])
+             if task is not current]
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    coordinator = runtime.get("coordinator")
+    if coordinator is not None:
+        await coordinator.async_shutdown()
+    speaker = runtime.get("speaker")
+    if speaker is not None:
+        await speaker.disconnect()
+    hass.data[DOMAIN].pop(config_entry.entry_id, None)
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    # Disconnect from the speaker
-    speaker: BoseSpeaker = hass.data[DOMAIN][config_entry.entry_id].get("speaker")
-    if speaker:
-        await speaker.disconnect()
-
-    # Remove our stored data
-    hass.data[DOMAIN].pop(config_entry.entry_id, None)
-
-    # Unload each platform we originally set up
-    platforms = [
-        "media_player",
-        "select",
-        "number",
-        "sensor",
-        "binary_sensor",
-        "switch",
-        "button",
-    ]
-    unload_ok = True
-    for platform in platforms:
-        ok = await hass.config_entries.async_forward_entry_unload(
-            config_entry, platform
-        )
-        unload_ok = unload_ok and ok
-
-    return unload_ok
+    """Unload platforms first; retain runtime if unloading is refused."""
+    if not await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS):
+        return False
+    await _async_stop_entry(hass, config_entry)
+    return True
 
 
 def setup(hass: HomeAssistant, config: ConfigEntry) -> bool:
@@ -609,13 +579,21 @@ async def connect_to_bose(
     data = config_entry.data
 
     speaker = BoseSpeaker(
-        host=data["ip"], bose_auth=auth, request_timeout=REQUEST_TIMEOUT
+        host=data["ip"], device_id=data["guid"],
+        bose_auth=auth, request_timeout=REQUEST_TIMEOUT
     )
 
     try:
         await speaker.connect()
+    except asyncio.CancelledError:
+        await speaker.disconnect()
+        raise
     except Exception as e:  # noqa: BLE001
-        _LOGGER.error("Failed to connect to Bose speaker (IP: %s): %s", data["ip"], e)
+        await speaker.disconnect()
+        if is_offline_error(e):
+            _LOGGER.debug("Bose speaker is offline during setup: %s", e)
+        else:
+            _LOGGER.warning("Failed to connect to Bose speaker: %s", e)
         return None
 
     return speaker

@@ -1,134 +1,90 @@
-# Bose Homeassistant
+# Bose Home Assistant — stability fork
 
-This is a custom component for Home Assistant to integrate with Bose soundbars / speakers.
-The speakers are controlled 100% locally. However, a cloud account is needed and required configured in the integration. Read more about this in the [BOSE Account](#bose-account) section.
+Custom integration for local control of Bose smart soundbars and speakers.
 
-![Preview](images/entities.jpg)
+Forked from [cavefire/Bose-Homeassistant](https://github.com/cavefire/Bose-Homeassistant).
+The original copyright and [GNU GPLv3 license](LICENSE) remain in effect.
+Fork changes are maintained by [PUSCHi1337](https://github.com/PUSCHi1337),
+dated 2026-10-28 through 2026-10-30 and developed with AI assistance.
+This project is unofficial and is not affiliated with Bose Corporation.
 
-![Preview](images/media_player.jpg)
+## Current state
 
-## Installation
+This fork contains the stability fixes and uses the companion
+[pybose fork](https://github.com/PUSCHi1337/pybose). The integration manifest
+pins an immutable library source commit; a plain `pip install pybose` does
+not install these changes.
 
-### Using HACS
+[![Offline integration tests](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml/badge.svg?branch=main)](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](http://mine.li/mTnn1)](http://mine.li/uuOUj)
+The current runtime version is **1.3.5.post7**. The fixes cover:
 
-1. Click the link above to open the integration in HACS.
-2. Install the integration.
+- Discovery browser cleanup, a shared connection handshake and bounded recovery.
+- Entry-owned background tasks and the same client retained across address changes.
+- IPv6 WebSocket addresses, typed local response timeouts and immediate connection notifications.
+- Unavailability while offline, fresh reads after recovery and no repeated known-offline polls.
+- Late accessory discovery once the speaker advertises the accessory status.
+- Entry-owned Cast discovery and shutdown. Automatic startup/recovery never enable
+  Chromecast or issue playback commands. The configured auto-enable option is
+  used only by an explicit media-play request.
+- The exact diagnostic from an already stopped Cast connect is DEBUG for that
+  owned socket only; other errors, clients and global logging settings are preserved.
 
-### Manual Installation
+The baseline has **112 integration tests, 174 library tests with HA dependencies
+and two package checks**, including a dependency downgrade/reinstall check.
+CI uses Home Assistant 2026.10.4 and blocks network sockets in tests.
+See [validation and known limits](VALIDATION.md) for exact source references
+and the scope of the limited passive device checks.
 
-1. Clone or download this repository.
-2. Copy the `custom_components` directory of this repository to your Home Assistant `config` directory.
-3. Restart Home Assistant.
+No public fork release is available yet. The protected `main` branch contains the
+development source; use a successful CI candidate when testing before release.
 
-## Setup
+## Installation and rollback
 
-1. Go to "Configuration" -> "Devices & Services" -> "Add Device" -> "Bose".
-2. Enter your BOSE account credentials (required, see [BOSE Account](#bose-account)).
-3. Select the device you want to add (discovered by mDNS or manually).
-4. Click "Add Device".
+The successful [Offline integration tests workflow](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml)
+provides a `bose-stability-candidate` artifact containing the installable ZIP,
+source references, SHA-256 checksums and rollback instructions. It is a test
+candidate, not a stable release. GitHub may require sign-in to download artifacts.
 
-## BOSE Account
+Preserve the existing integration directory and take a Home Assistant backup.
+Verify the artifact checksum, then replace only `custom_components/bose`.
+The paired library is installed through its manifest requirement. Restart
+Home Assistant when the short outage is acceptable and verify the entity states
+and logs. See [ROLLBACK.md](ROLLBACK.md) for the full return path.
 
-BOSE requires you to have an account in order to control a soundbar / speaker. Even if you allow access for all users in the network, you still need to provide your account credentials.
+To return to the original dependency, restore the previous integration and its
+manifest requirement `pybose==2026.10.2`, then restart Home Assistant.
+The fork library has a distinct version so HA can reinstall the original library.
 
-So this integration is making use of `pybose`'s authentication. You can find more information about this in the [pybose repository](https://github.com/cavefire/pybose).
+The manual **Prepare release bundle** workflow only builds review artifacts.
+It does not create tags, delete drafts, publish releases or upload to PyPI.
 
-`pybose` is a Python library that reverse-engineers the BOSE API. It is used to authenticate with the BOSE API and to control the soundbar / speaker. After the initial call to the BOSE API, an access token is stored, making the following calls to the device locally.
+## Setup and authentication
 
-## Features
+Add **Bose** through Settings → Devices & services. A Bose account is required
+to obtain and refresh authentication tokens; device commands use the local network.
+Keep credentials and tokens in the local HA configuration, never in source,
+screenshots or public reports.
 
-This is the list of features implemented in the integration. Non-marked features are not yet implemented. Feel free to do so!
+## Features and devices
 
-- [x] Control power
-- [x] Control volume
-- [x] See current volume
-- [x] See currently playing media (title, artist, album, cover, duration and position)
-- [x] Control media (play, pause, next, previous)
-- [x] Select sources (aux, chinch, optical - based on the speaker)
-- [x] Control bluetooth 
-- [x] Audio setup (bass, treble, center, surround)
-- [x] Enable / disable bass module and gain
-- [x] Enable / disable surround speakers 
-- [x] Group speakers
-- [x] HDMI-CEC settings
-- [x] Standby timer settings
-- [x] Optical activation settings
-- [x] Battery Level (for portable speakers)
-- [x] Rebroadcast latency settings
-- [x] Standby timer settings
-- [x] Dialog settings (AI Dialog Mode, Dialog Mode, Normal - based on the speaker)
-- [x] Dual Mono settings
-- [x] Send arbitrary request via service
+The inherited implementation exposes power, volume, media information and playback,
+source selection, audio/bass/surround settings, speaker groups, Bluetooth settings
+and device-specific controls. Availability depends on advertised capabilities.
 
-### Group speakers
-You can group multiple Bose speakers together, like in the Bose App. This is done by using the service `media_player.join`.
+Inherited device reports cover Soundbar 500/700/900/Ultra, Home Speaker 300/500,
+Music Amplifier and Portable Speaker. These historical reports are not a
+compatibility guarantee for this fork.
 
-**Target:** Select the entity you want to be the master speaker (max. 1 media player!)
-**Group members:** Select the entities you want to join the master speaker.
+![Entity preview](images/entities.jpg)
+![Media player preview](images/media_player.jpg)
 
-You can either join all desired speakers together, or you can join them one by one.
-Joining a speaker to a other speaker, that is already in a group, will join the new speaker to the existing group.
+## Development and support
 
-**Example:**
-```yaml
-action: media_player.join
-data:
-  group_members:
-    - media_player.bose_smart_ultra_soundbar
-target:
-  entity_id: media_player.bose_music_amplifier
-```
-
-To remove a speaker from the group, use the service `media_player.unjoin`. If the target is the master speaker, the group will be dissolved. Otherwise the target will be removed from the group.
-
-### Services
-
-- `bose.send_custom_request` - Send a custom request to the speaker. This can be used to control features that are not yet implemented in the integration and for debugging purposes.
-
-### Supported Devices
-
-All devices commected via WiFi and controllable using the BOSE App should work. Here is the list of devices, that have been tested:
-
-**Soundbars:**
-- [x] Soundbar 500
-- [x] Soundbar 700
-- [x] Soundbar 900
-- [x] Soundbar Ultra
-
-**Home Speakers:**
-- [x] Home Speaker 300
-- [x] Home Speaker 500
-
-**Others:**
-- [x] Music Amplifier
-- [x] Portable Speaker
-
-If you have a device that is not listed here, please open an issue or a pull request.
-These devices only work with the features that are marked as completed above. Some features might not work due to hardware or software limitations. 
-**If a feature is missing on your device, please open an issue.**
-
-## Contributing
-This project is a work in progress, and contributions are welcome!
-If you encounter issues, have feature requests, or want to contribute, feel free to submit a pull request or open an issue.
-
-My goal is to split the integration from the `pybose` library, so that it can be used in other projects as well. So every function that is calling the speaker's websocket, should be implemented in the `pybose` library. The integration should only be responsible for the Home Assistant part.
-
-If you like this project, consider supporting me 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://www.buymeacoffee.com/cavefire)
-
-
-## Disclaimer
-This project is not affiliated with Bose Corporation. The API is reverse-engineered and may break at any time. Use at your own risk.
-
-**To the BOSE legal team:**
-
-All API keys used in this project are publicly available on the Bose website.
-
-There was no need to be a computer specialist to find them, so: Please do not sue me for making people use their products in a way they want to.
-
-If you have any issues with me publishing this, please contact me! I am happy to discuss this with you and make your products better.
+Changes and discussion are tracked in the [fork pull requests](https://github.com/PUSCHi1337/Bose-Homeassistant/pulls).
+Tests and their dependencies run on GitHub's runners; no second live HA instance
+is started by CI. See [VALIDATION.md](VALIDATION.md) before broadening test claims.
 
 ## License
-This project is licensed under GNU GPLv3 - see the [LICENSE](LICENSE) file for details.
+
+GNU GPLv3; see [LICENSE](LICENSE). The inherited history and notices are retained.

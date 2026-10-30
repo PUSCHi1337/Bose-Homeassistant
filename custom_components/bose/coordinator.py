@@ -8,7 +8,7 @@ from typing import Any
 
 from pybose.BoseSpeaker import BoseSpeaker
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import _LOGGER, DOMAIN
@@ -32,6 +32,7 @@ class BoseCoordinatorData:
 
     cached_messages: dict[str, CachedMessage] = field(default_factory=dict)
     last_update: datetime | None = None
+    connected: bool = False
 
 
 class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
@@ -48,16 +49,39 @@ class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{device_id}",
-            update_interval=timedelta(minutes=5),
+            update_interval=timedelta(seconds=30),
+            always_update=True,
         )
         self.speaker = speaker
         self.device_id = device_id
 
         # Initialize with empty data
-        self.data = BoseCoordinatorData()
+        self.data = BoseCoordinatorData(connected=speaker.is_connected())
 
         # Attach receiver to cache messages
-        self.speaker.attach_receiver(self._cache_message)  # type: ignore[arg-type]
+        self._message_listener = self.speaker.attach_receiver(self._cache_message)
+        self._connection_listener = self.speaker.attach_connection_listener(
+            self._async_transport_changed
+        )
+        self._stopped = False
+
+    @callback
+    def _async_transport_changed(self, connected: bool) -> None:
+        """Publish real transport edges immediately, including silent timeouts."""
+        if self._stopped or connected == self.data.connected:
+            return
+        self.data.cached_messages.clear()
+        self.data.connected = connected
+        self.data.last_update = datetime.now()
+        self.async_set_updated_data(self.data)
+
+    async def async_shutdown(self) -> None:
+        """Detach owned client callbacks before the coordinator stops."""
+        self._stopped = True
+        self.speaker.detach_connection_listener(self._connection_listener)
+        if self._message_listener is not None:
+            self.speaker.detach_receiver(self._message_listener)
+        await super().async_shutdown()
 
     def _cache_message(self, data: dict[str, Any] | Any) -> None:
         """Cache incoming messages from the speaker."""
@@ -266,5 +290,9 @@ class BoseCoordinator(DataUpdateCoordinator[BoseCoordinatorData]):
 
     async def _async_update_data(self) -> BoseCoordinatorData:
         """Fetch data from speaker."""
+        connected = self.speaker.is_connected()
+        if connected != self.data.connected:
+            self.data.cached_messages.clear()
+        self.data.connected = connected
         self.data.last_update = datetime.now()
         return self.data

@@ -138,6 +138,8 @@ class BoseBaseSelect(BoseBaseEntity, SelectEntity):
 
     async def async_update(self) -> None:
         """Fetch the current audio mode."""
+        if not self.speaker.is_connected():
+            return
         try:
             data = await getattr(self.speaker, self._get_method)()
         except Exception:  # noqa: BLE001
