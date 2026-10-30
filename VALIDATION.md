@@ -6,8 +6,10 @@ The installed runtime candidate is integration **1.3.5.post7** from
 `f3060b1c677ee05047aace3ef3a8a44711067231`, paired with the immutable pybose
 source `bfcce6fc33a6a174484acd09ba0f30c1513843a0` (package version
 `2026.10.2.post2`). Repository preparation changes only documentation,
-artifact metadata and workflow behavior; the HA runtime code and library pin
-remain unchanged.
+artifact metadata and workflow behavior. The manifest's named library URL uses
+compact PEP 508 notation (\`pybose@https://...\`) to satisfy Hassfest's no-space
+rule. The Python runtime code, package versions and exact library source remain
+unchanged.
 
 [Baseline CI](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/runs/41030871351):
 112 integration tests, 174 library tests with the HA dependency set and two
