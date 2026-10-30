@@ -204,3 +204,23 @@ async def test_monitor_quiets_expected_absence_and_keeps_real_failures_visible(
             await bose.reconnection_monitor(hass, entry, None)
     assert bool([r for r in caplog.records if r.name == "bose"
                  and r.levelno >= logging.WARNING]) is should_warn
+
+
+async def test_background_cast_discovery_never_enables_speaker_features(monkeypatch, caplog):
+    import importlib
+    media_module = importlib.import_module("bose.media_player")
+    entity, speaker, _, _ = make_entity("media")
+    speaker.set_chromecast = AsyncMock()
+    browser = SimpleNamespace(devices={}, start_discovery=Mock())
+    async def executor(function, *args):
+        return function(*args)
+    entity.hass.async_add_executor_job = executor
+    monkeypatch.setattr(media_module.zeroconf, "async_get_instance",
+                        AsyncMock(return_value=object()))
+    monkeypatch.setattr(media_module, "CastBrowser", lambda *args: browser)
+    monkeypatch.setattr(media_module.discovery, "stop_discovery", Mock())
+    monkeypatch.setattr(media_module.asyncio, "sleep", AsyncMock())
+    with caplog.at_level(logging.WARNING, logger="bose"):
+        await entity._async_sync_chromecast()
+    speaker.set_chromecast.assert_not_awaited()
+    assert not [r for r in caplog.records if r.name == "bose" and r.levelno >= logging.WARNING]
