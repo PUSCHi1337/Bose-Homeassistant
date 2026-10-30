@@ -15,6 +15,8 @@ from pybose.BoseSpeaker import BoseSpeaker
 import pychromecast
 from pychromecast import discovery
 from pychromecast.discovery import CastBrowser, SimpleCastListener
+from pychromecast.error import RequestTimeout as ChromecastRequestTimeout
+from time import monotonic
 
 from homeassistant.components import media_source, zeroconf
 from homeassistant.components.media_player import (
@@ -26,13 +28,13 @@ from homeassistant.components.media_player import (
     async_process_play_media_url,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 import homeassistant.helpers.entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .const import _LOGGER, CONF_CHROMECAST_AUTO_ENABLE, DOMAIN
+from .const import _LOGGER, CONF_CHROMECAST_AUTO_ENABLE, DOMAIN, is_offline_error
 from .coordinator import BoseCoordinator
 from .entity import BoseBaseEntity
 
@@ -100,6 +102,13 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         }
         self._bluetooth_devices: dict[str, dict] = {}
         self._chromecast_device = None
+        self._cast_uuid = None
+        self._cast_transport_task = None
+        self._cast_restore_pending = True
+        self._cast_allow_enable = True
+        self._cast_restore_attempts = 0
+        self._cast_retry_at = 0.0
+        self._cast_stopping = False
         self._media_controller = None
         self._speaker_ip = config_entry.data.get("ip")
         self._linked_media_players: dict[str, str] = {}
@@ -114,7 +123,6 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
             hass.data[DOMAIN]["media_entities"] = {}
         hass.data[DOMAIN]["media_entities"][system_info.get("guid")] = self
 
-        hass.async_create_task(self._async_setup_chromecast())
 
         self._load_linked_media_players()
 
@@ -123,6 +131,82 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         )
 
         self._setup_linked_player_listeners()
+
+    async def async_added_to_hass(self) -> None:
+        """Start Cast discovery as entry-owned work after entity setup."""
+        await super().async_added_to_hass()
+        self._schedule_cast_transport()
+
+    @callback
+    def _async_connection_updated(self) -> None:
+        was_connected = self._bose_connected
+        super()._async_connection_updated()
+        connected = self.speaker.is_connected()
+        if connected != was_connected:
+            self._cast_restore_pending = True
+            self._cast_allow_enable = False
+            self._cast_restore_attempts = 0
+            self._cast_retry_at = 0.0
+        if ((not connected and self._chromecast_device is not None)
+                or (connected and self._cast_restore_pending
+                    and monotonic() >= self._cast_retry_at)):
+            self._schedule_cast_transport()
+
+    def _schedule_cast_transport(self) -> None:
+        if self._cast_stopping:
+            return
+        if self._cast_transport_task and not self._cast_transport_task.done():
+            return
+        self._cast_transport_task = self._config_entry.async_create_background_task(
+            self.hass, self._async_sync_chromecast(), "Bose Chromecast transport",
+            eager_start=False,
+        )
+
+    async def _async_disconnect_chromecast(self) -> None:
+        cast = self._chromecast_device
+        self._chromecast_device = None
+        self._media_controller = None
+        if cast is not None:
+            try:
+                await self.hass.async_add_executor_job(
+                    lambda: cast.disconnect(timeout=2)
+                )
+            except TimeoutError:
+                _LOGGER.debug("Chromecast worker is finishing its shutdown")
+
+    async def _async_sync_chromecast(self) -> None:
+        """Stop a lost transport and restore Cast without device commands."""
+        while not self._cast_stopping:
+            connected = self.speaker.is_connected()
+            if not connected:
+                self._cast_restore_pending = True
+                self._cast_allow_enable = False
+                await self._async_disconnect_chromecast()
+            elif self._cast_restore_pending and monotonic() >= self._cast_retry_at:
+                self._cast_restore_pending = False
+                self._speaker_ip = getattr(
+                    self.speaker, "_host", self._config_entry.data.get("ip")
+                )
+                allow_enable = self._cast_allow_enable
+                self._cast_allow_enable = False
+                self._cast_restore_attempts += 1
+                await self._async_setup_chromecast(allow_enable=allow_enable)
+                if self._chromecast_device is None and self._cast_restore_attempts < 3:
+                    self._cast_restore_pending = True
+                    self._cast_retry_at = monotonic() + 60
+            if connected == self.speaker.is_connected():
+                return
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Await the entry-owned Cast worker and close its socket."""
+        self._cast_stopping = True
+        task = self._cast_transport_task
+        if task and not task.done():
+            task.cancel()
+        if task:
+            await asyncio.gather(task, return_exceptions=True)
+        await self._async_disconnect_chromecast()
+        await super().async_will_remove_from_hass()
 
     def _load_linked_media_players(self) -> None:
         """Load linked media players and source renames from config entry options."""
@@ -551,6 +635,8 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         self._parse_audio_volume(volume_data)
 
         await self._refresh_audio_format()
+        if not self.speaker.is_connected():
+            return
 
         # Refresh Bluetooth information
         try:
@@ -573,6 +659,8 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
             self._parse_bluetooth_source_status(bluetooth_source_status)
         except (ConnectionError, TimeoutError) as err:
             _LOGGER.debug("Failed to get Bluetooth information: %s", err)
+        if not self.speaker.is_connected():
+            return
 
         # Refresh available sources (build human readable list)
         sources = await self.coordinator.get_sources()
@@ -858,8 +946,11 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
                 },
             ) from err
 
-    async def _async_setup_chromecast(self, secondTry=False) -> None:
+    async def _async_setup_chromecast(self, secondTry=False, *, allow_enable=True) -> None:
         """Set up Chromecast device for media playback."""
+        if not self.speaker.is_connected():
+            return
+        browser = None
         if self._speaker_ip is None:
             _LOGGER.warning("No speaker IP available for Chromecast setup")
             return
@@ -890,10 +981,14 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
             # Wait a bit for discovery to find devices
             await asyncio.sleep(3)
 
-            # Look for a Chromecast device on the same IP as our Bose speaker
+            if not self.speaker.is_connected():
+                return
+
+            # Look for a Chromecast device on the same IP or with the saved UUID
             chromecast_found = False
             for uuid, device in browser.devices.items():
-                if device.host == self._speaker_ip:
+                if device.host == self._speaker_ip or uuid == self._cast_uuid:
+                    self._cast_uuid = uuid
                     # Create chromecast instance
                     self._chromecast_device = await self.hass.async_add_executor_job(
                         pychromecast.get_chromecast_from_cast_info, device, zc
@@ -908,7 +1003,8 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
                     break
 
             if self._chromecast_device:
-                await self.hass.async_add_executor_job(self._chromecast_device.wait)
+                cast = self._chromecast_device
+                await self.hass.async_add_executor_job(lambda: cast.wait(timeout=5))
                 _LOGGER.debug("Chromecast device connected successfully")
             elif not chromecast_found:
                 _LOGGER.debug(
@@ -918,16 +1014,19 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
                 auto_enable = self._config_entry.options.get(
                     CONF_CHROMECAST_AUTO_ENABLE, True
                 )
-                if not secondTry and auto_enable:
+                if not secondTry and auto_enable and allow_enable:
                     await self.speaker.set_chromecast(True)
                     # Stop discovery before retrying
                     await self.hass.async_add_executor_job(
                         discovery.stop_discovery, browser
                     )
-                    await self._async_setup_chromecast(True)
+                    browser = None
+                    await self._async_setup_chromecast(True, allow_enable=allow_enable)
                     return
 
-                if not auto_enable:
+                if not allow_enable:
+                    _LOGGER.debug("Chromecast discovery not ready after transport recovery")
+                elif not auto_enable:
                     _LOGGER.debug(
                         "Chromecast auto-enable is disabled, skipping automatic activation"
                     )
@@ -939,11 +1038,15 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
                         "No Chromecast device found for Bose speaker after enabling Chromecast"
                     )
 
-            # Stop discovery
-            await self.hass.async_add_executor_job(discovery.stop_discovery, browser)
-
-        except (ConnectionError, TimeoutError, OSError, AttributeError) as err:
-            _LOGGER.error("Error setting up Chromecast: %s", err)
+        except Exception as err:
+            await self._async_disconnect_chromecast()
+            if is_offline_error(err) or isinstance(err, ChromecastRequestTimeout):
+                _LOGGER.debug("Chromecast transport is not ready: %s", err)
+            else:
+                _LOGGER.warning("Error setting up Chromecast: %s", err)
+        finally:
+            if browser is not None:
+                await self.hass.async_add_executor_job(discovery.stop_discovery, browser)
 
     def _get_content_type(self, media_type: MediaType | str, media_url: str) -> str:
         """Determine the appropriate content type for Chromecast."""

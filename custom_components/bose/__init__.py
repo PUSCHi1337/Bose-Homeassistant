@@ -1,7 +1,6 @@
 """The Bose component."""
 
 import asyncio
-import errno
 import json
 from time import monotonic
 
@@ -28,6 +27,7 @@ from . import config_flow
 from .const import (
     _LOGGER,
     DOMAIN,
+    is_offline_error,
     REQUEST_TIMEOUT,
     TOKEN_REFRESH_DELAY,
     TOKEN_RETRY_DELAY,
@@ -398,10 +398,16 @@ async def reconnection_monitor(
             _LOGGER.info("Bose speaker connection recovered")
         except Exception as err:
             retry_at = monotonic() + retry_delay
-            _LOGGER.warning(
-                "Bose recovery failed; next discovery in %s seconds: %s",
-                retry_delay, err,
-            )
+            if is_offline_error(err):
+                _LOGGER.debug(
+                    "Bose speaker not ready; next discovery in %s seconds: %s",
+                    retry_delay, err,
+                )
+            else:
+                _LOGGER.warning(
+                    "Bose recovery failed; next discovery in %s seconds: %s",
+                    retry_delay, err,
+                )
             retry_delay = min(retry_delay * 2, RECONNECT_MAX_DELAY)
 
 
@@ -584,15 +590,7 @@ async def connect_to_bose(
         raise
     except Exception as e:  # noqa: BLE001
         await speaker.disconnect()
-        offline = isinstance(e, (ConnectionError, TimeoutError)) or (
-            isinstance(e, OSError)
-            and e.errno in {
-                errno.ECONNREFUSED, errno.ECONNRESET, errno.ECONNABORTED,
-                errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ENETDOWN,
-                errno.ETIMEDOUT,
-            }
-        )
-        if offline:
+        if is_offline_error(e):
             _LOGGER.debug("Bose speaker is offline during setup: %s", e)
         else:
             _LOGGER.warning("Failed to connect to Bose speaker: %s", e)

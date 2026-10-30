@@ -296,13 +296,24 @@ class BoseConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not guid:
             return self.async_abort(reason="no_guid")
 
+        # Prefer IPv4 when a dual-stack advertisement provides it. This also
+        # keeps the Bose and Cast transports on the same address family.
+        host = next(
+            (str(address) for address in getattr(discovery_info, "ip_addresses", ())
+             if getattr(address, "version", None) == 4),
+            discovery_info.host,
+        )
         await self.async_set_unique_id(guid)
-        self._abort_if_unique_id_configured(updates={"ip": discovery_info.host})
+        # Loaded entries own an update listener and transport recovery.
+        # Core still wakes an entry in SETUP_RETRY on rediscovery.
+        self._abort_if_unique_id_configured(
+            updates={"ip": host}, reload_on_update=False
+        )
         if self._entry_for_guid(guid) is not None:
             return self.async_abort(reason="already_configured")
 
         self._discovered_device = {
-            "ip": discovery_info.host,
+            "ip": host,
             "guid": guid,
             "name": discovery_info.name.split(".")[0],
         }

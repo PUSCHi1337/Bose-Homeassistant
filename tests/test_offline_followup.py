@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
+from ipaddress import ip_address
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -69,11 +70,12 @@ async def test_coordinator_shutdown_detaches_owned_library_listeners(tmp_path):
         assert not speaker._receivers
 
 
+@pytest.mark.parametrize("dual_stack", [False, True])
 @pytest.mark.parametrize("state,should_reload", [
     (ConfigEntryState.LOADED, False), (ConfigEntryState.SETUP_RETRY, True),
 ])
 async def test_discovery_uses_listener_owned_updates_without_deprecation(
-    tmp_path, monkeypatch, caplog, state, should_reload
+    tmp_path, monkeypatch, caplog, state, should_reload, dual_stack
 ):
     hass = HomeAssistant(str(tmp_path))
     setup_frame(hass)
@@ -98,11 +100,13 @@ async def test_discovery_uses_listener_owned_updates_without_deprecation(
     flow.context = {"source": "zeroconf", "unique_id": "test-device"}
     monkeypatch.setattr(flow, "async_set_unique_id", AsyncMock(return_value=entry))
     info = SimpleNamespace(host="2001:db8::20", properties={"GUID": "test-device"},
-                           name="Test Speaker._bose-passport._tcp.local.")
+                           name="Test Speaker._bose-passport._tcp.local.",
+                           ip_addresses=[ip_address("2001:db8::20")] +
+                           ([ip_address("192.0.2.10")] if dual_stack else []))
     with caplog.at_level(logging.WARNING):
         with pytest.raises(AbortFlow):
             await flow.async_step_zeroconf(info)
-    assert entry.data["ip"] == "2001:db8::20"
+    assert entry.data["ip"] == ("192.0.2.10" if dual_stack else "2001:db8::20")
     assert bool(entries.async_schedule_reload.call_count) is should_reload
     report_usage.assert_not_called()
 
@@ -166,3 +170,37 @@ async def test_media_poll_does_not_start_another_read_after_format_transport_los
     await entity.async_update()
     coordinator.get_bluetooth_sink_status.assert_not_awaited()
     coordinator.get_sources.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure,should_warn", [
+    (ConnectionRefusedError(111, "speaker is offline"), False),
+    (RuntimeError("unexpected discovery failure"), True),
+])
+async def test_monitor_quiets_expected_absence_and_keeps_real_failures_visible(
+    monkeypatch, caplog, failure, should_warn
+):
+    import bose
+    from .conftest import FakeSpeaker
+    from .test_offline_availability import StopMonitor
+    speaker = FakeSpeaker()
+    speaker.connected = False
+    speaker.reconnect = AsyncMock(side_effect=failure)
+    entry = SimpleNamespace(entry_id="entry", data={"guid": "test-device"})
+    hass = FakeHass()
+    hass.data = {DOMAIN: {"entry": {"speaker": speaker}}}
+    elapsed = [0]
+    async def sleep(delay):
+        elapsed[0] += delay
+        if elapsed[0] > 120:
+            raise StopMonitor
+    monkeypatch.setattr(bose.asyncio, "sleep", sleep)
+    monkeypatch.setattr(bose, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(
+        bose.config_flow, "Discover_Bose_Devices",
+        AsyncMock(return_value=[{"guid": "test-device", "ip": "speaker.invalid"}]),
+    )
+    with caplog.at_level(logging.WARNING, logger="bose"):
+        with pytest.raises(StopMonitor):
+            await bose.reconnection_monitor(hass, entry, None)
+    assert bool([r for r in caplog.records if r.name == "bose"
+                 and r.levelno >= logging.WARNING]) is should_warn
