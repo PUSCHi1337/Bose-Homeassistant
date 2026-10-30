@@ -34,6 +34,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 import homeassistant.helpers.entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from .chromecast import disconnect_chromecast
 from .const import _LOGGER, CONF_CHROMECAST_AUTO_ENABLE, DOMAIN, is_offline_error
 from .coordinator import BoseCoordinator
 from .entity import BoseBaseEntity
@@ -167,7 +168,7 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         if cast is not None:
             try:
                 await self.hass.async_add_executor_job(
-                    lambda: cast.disconnect(timeout=2)
+                    lambda: disconnect_chromecast(cast, timeout=2)
                 )
             except TimeoutError:
                 _LOGGER.debug("Chromecast worker is finishing its shutdown")
