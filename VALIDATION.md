@@ -47,8 +47,9 @@ resource-stability guarantees. No audio or TTS playback test is implied.
   TCP-timeout/stop race is reproduced through the real installed PyChromecast code
   in CI; it is not inferred solely from an empty live log.
 - Longer resource monitoring and broader device/firmware coverage remain open.
-- A public stable release and ordinary HACS update path are separate from the
-  reviewed source and CI installation candidate.
+- The first public preview is distributed through a GitHub pre-release and can
+  be selected through a HACS custom repository; see [INSTALL.md](INSTALL.md).
+  A public stable release remains a separate decision after further observation.
 
 Home network addresses, authentication material, private entity IDs and raw
 household logs are intentionally absent from this report.
