@@ -90,6 +90,8 @@ async def test_discovery_uses_listener_owned_updates_without_deprecation(
         async_schedule_reload=Mock(),
     )
     hass.config_entries = entries
+    report_usage = Mock()
+    monkeypatch.setattr('homeassistant.config_entries.report_usage', report_usage)
     flow = BoseConfigFlow()
     flow.hass = hass
     flow.handler = DOMAIN
@@ -102,7 +104,7 @@ async def test_discovery_uses_listener_owned_updates_without_deprecation(
             await flow.async_step_zeroconf(info)
     assert entry.data["ip"] == "2001:db8::20"
     assert bool(entries.async_schedule_reload.call_count) is should_reload
-    assert not [r for r in caplog.records if "has an update listener" in r.getMessage()]
+    report_usage.assert_not_called()
 
 
 async def test_silent_live_transport_finishes_sensor_poll_before_ha_slow_warning():
@@ -115,7 +117,7 @@ async def test_silent_live_transport_finishes_sensor_poll_before_ha_slow_warning
     speaker._websocket = socket
     speaker._set_connected(True)
     coordinator = SimpleNamespace(get_network_status=speaker.get_network_status)
-    entity = BoseNetworkIpSensor(speaker, SimpleNamespace(entry_id="entry"),
+    entity = BoseNetworkIpSensor(speaker, SimpleNamespace(entry_id="entry", data={"ip": "speaker.invalid", "guid": "test-device"}),
                                 FakeHass(), coordinator)
     try:
         await asyncio.wait_for(entity.async_update(), 9.25)
@@ -130,7 +132,7 @@ async def test_silent_live_transport_finishes_sensor_poll_before_ha_slow_warning
 async def test_cast_transport_is_closed_on_offline_and_restored_passively():
     entity, speaker, _, _ = make_entity("media")
     stopped = []
-    cast = SimpleNamespace(disconnect=lambda: stopped.append(True))
+    cast = SimpleNamespace(disconnect=lambda **kwargs: stopped.append(True))
     entity._chromecast_device = cast
     entity._media_controller = object()
     async def executor(function, *args):
