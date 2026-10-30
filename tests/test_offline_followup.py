@@ -159,6 +159,7 @@ async def test_media_poll_does_not_start_another_read_after_format_transport_los
     async def drops():
         speaker.connected = False
     entity._refresh_audio_format = drops
+    coordinator.get_bluetooth_sink_status = AsyncMock(side_effect=AssertionError("offline Bluetooth I/O"))
     coordinator.get_sources = AsyncMock(side_effect=AssertionError("offline followup I/O"))
     await entity.async_update()
     coordinator.get_bluetooth_sink_status.assert_not_awaited()
