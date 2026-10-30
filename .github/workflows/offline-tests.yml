@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: PUSCHi1337/pybose
-          ref: 4fc26d5b19145671d47807fee4049036ad215104
+          ref: bfcce6fc33a6a174484acd09ba0f30c1513843a0
           path: library-source
       - name: Run library regressions with the Home Assistant dependency set
         run: python -m pytest library-source/tests/unit --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/library-with-ha.xml -q

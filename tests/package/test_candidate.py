@@ -28,7 +28,7 @@ def test_candidate_checksum_and_immutable_library_source():
         assert requirement in manifest["requirements"]
         direct = json.loads(distribution("pybose").read_text("direct_url.json"))
         assert direct["url"] == requirement.split(" @ ", 1)[1]
-        assert version("pybose") == "2026.10.2.post1"
+        assert version("pybose") == "2026.10.2.post2"
         assert archive.read("custom_components/bose/LICENSE") == (ROOT / "LICENSE").read_bytes()
         assert "ROLLBACK.md" in names
 
