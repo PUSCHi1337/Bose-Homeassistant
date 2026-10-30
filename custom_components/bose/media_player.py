@@ -105,7 +105,6 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         self._cast_uuid = None
         self._cast_transport_task = None
         self._cast_restore_pending = True
-        self._cast_allow_enable = True
         self._cast_restore_attempts = 0
         self._cast_retry_at = 0.0
         self._cast_stopping = False
@@ -144,7 +143,6 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
         connected = self.speaker.is_connected()
         if connected != was_connected:
             self._cast_restore_pending = True
-            self._cast_allow_enable = False
             self._cast_restore_attempts = 0
             self._cast_retry_at = 0.0
         if ((not connected and self._chromecast_device is not None)
@@ -180,17 +178,14 @@ class BoseMediaPlayer(BoseBaseEntity, MediaPlayerEntity):
             connected = self.speaker.is_connected()
             if not connected:
                 self._cast_restore_pending = True
-                self._cast_allow_enable = False
                 await self._async_disconnect_chromecast()
             elif self._cast_restore_pending and monotonic() >= self._cast_retry_at:
                 self._cast_restore_pending = False
                 self._speaker_ip = getattr(
                     self.speaker, "_host", self._config_entry.data.get("ip")
                 )
-                allow_enable = self._cast_allow_enable
-                self._cast_allow_enable = False
                 self._cast_restore_attempts += 1
-                await self._async_setup_chromecast(allow_enable=allow_enable)
+                await self._async_setup_chromecast(allow_enable=False)
                 if self._chromecast_device is None and self._cast_restore_attempts < 3:
                     self._cast_restore_pending = True
                     self._cast_retry_at = monotonic() + 60
