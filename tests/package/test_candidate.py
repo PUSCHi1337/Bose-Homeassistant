@@ -31,6 +31,7 @@ def test_candidate_checksum_and_immutable_library_source():
         assert version("pybose") == "2026.10.2.post2"
         assert archive.read("custom_components/bose/LICENSE") == (ROOT / "LICENSE").read_bytes()
         assert "ROLLBACK.md" in names
+        assert archive.read("VALIDATION.md") == (ROOT / "VALIDATION.md").read_bytes()
 
 
 def test_all_packaged_platforms_import_against_pinned_library(tmp_path, monkeypatch):

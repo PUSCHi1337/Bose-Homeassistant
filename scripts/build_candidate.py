@@ -26,7 +26,7 @@ source = {
     "library_commit": match.group(1),
     "library_requirement": requirement,
     "integration_version": manifest["version"],
-    "status": "offline-tested candidate; no hardware or live HA validation",
+    "status": "development candidate; see VALIDATION.md for test coverage and limits",
 }
 source_bytes = (json.dumps(source, indent=2) + "\n").encode()
 rollback = (root / "ROLLBACK.md").read_bytes()
@@ -45,8 +45,10 @@ with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as result:
     write("custom_components/bose/FORK_SOURCE.json", source_bytes)
     write("SOURCE.json", source_bytes)
     write("ROLLBACK.md", rollback)
+    write("VALIDATION.md", (root / "VALIDATION.md").read_bytes())
 (output / "SOURCE.json").write_bytes(source_bytes)
 (output / "ROLLBACK.md").write_bytes(rollback)
+(output / "VALIDATION.md").write_bytes((root / "VALIDATION.md").read_bytes())
 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 (output / "SHA256SUMS").write_text(f"{digest}  {archive.name}\n")
 print(json.dumps({"archive": archive.name, "sha256": digest, **source}, indent=2))
