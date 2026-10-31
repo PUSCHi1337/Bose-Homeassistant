@@ -38,6 +38,15 @@ def test_real_socket_client_stopped_during_connect_is_diagnostic(
     monkeypatch.setattr(
         "pychromecast.socket_client.socket.create_connection", pending_connection
     )
+    # 14.0.x calls new_socket().connect(); 14.1 calls create_connection().
+    # Give the legacy fake a local socketpair FD for the real selector only.
+    legacy_socket = SimpleNamespace(
+        connect=pending_connection, settimeout=lambda timeout: None,
+        fileno=client.socketpair[1].fileno, close=lambda: None,
+    )
+    monkeypatch.setattr(
+        "pychromecast.socket_client.new_socket", lambda: legacy_socket, raising=False
+    )
 
     def connect():
         try:
@@ -60,7 +69,7 @@ def test_real_socket_client_stopped_during_connect_is_diagnostic(
     try:
         with caplog.at_level(logging.DEBUG, logger="pychromecast.socket_client"):
             worker.start()
-            assert entered.wait(2)
+            assert entered.wait(2), repr(failures)
             disconnect_chromecast(cast, timeout=2)
         assert not worker.is_alive()
         assert len(failures) == 1
