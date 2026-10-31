@@ -1,6 +1,7 @@
-# Install the public preview
+# Installation
 
-Preview: [v1.3.5.post7](https://github.com/PUSCHi1337/Bose-Homeassistant/releases/tag/v1.3.5.post7).
+Use a published release from the [release list](https://github.com/PUSCHi1337/Bose-Homeassistant/releases).
+The current source version is **1.3.6**; the earlier preview is **v1.3.5.post7**.
 The declared minimum Home Assistant version is **2026.10.4**, which is also the
 version used in CI. Read [VALIDATION.md](VALIDATION.md) for test coverage and
 remaining limits before installing.
@@ -14,9 +15,9 @@ existing installation, keep its Bose entry under **Settings → Devices & servic
 
 1. In HACS, open the menu and choose **Custom repositories**.
 2. Add `https://github.com/PUSCHi1337/Bose-Homeassistant` with type **Integration**.
-3. Open **Bose stability fork**. In its download/redownload version selector,
-   enable **Show beta versions** if the preview is hidden, then select
-   **v1.3.5.post7**.
+3. Open **Bose stability fork** and select the published **v1.3.6** release.
+   To use the older **v1.3.5.post7** preview instead, enable **Show beta versions**
+   if that version is hidden.
 4. Download the selected version and restart Home Assistant at a suitable time.
 5. For a new installation, add **Bose** under **Settings → Devices & services**.
    For an upgrade, keep the existing entry and check its entities and logs.
@@ -32,14 +33,15 @@ resolve the old repository's HACS tracking before accepting future HACS updates.
 
 HACS versions differ in their beta controls. Its optional per-repository
 pre-release switch controls whether beta versions are considered for update
-notifications; selecting a preview for download is a separate step.
+notifications; selecting a version for download is a separate step.
 See the official [custom repository guide](https://hacs.dev/docs/faq/custom_repositories/),
 [integration layout guide](https://hacs.dev/docs/publish/integration/) and
 [pre-release update switch documentation](https://www.hacs.dev/docs/use/entities/switch/).
 
 ## Manual installation
 
-1. Open the [v1.3.5.post7 release](https://github.com/PUSCHi1337/Bose-Homeassistant/releases/tag/v1.3.5.post7)
+1. Open the published **v1.3.6** entry in the
+   [release list](https://github.com/PUSCHi1337/Bose-Homeassistant/releases)
    and download **Source code (zip)**.
 2. Extract it. Inside the top-level repository folder, locate
    `custom_components/bose`.
@@ -62,6 +64,6 @@ installation method for this fork.
 Check the loaded integration version, expected entity availability and fresh
 startup logs. An offline speaker should be unavailable. Accessories may remain
 unavailable after a standby restart until the speaker advertises them.
-No power-cycle or playback test is required to install this preview.
+No power-cycle or playback test is required to install this version.
 
 See [ROLLBACK.md](ROLLBACK.md) to restore the previous files and dependency.

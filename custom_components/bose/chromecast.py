@@ -8,6 +8,9 @@ from typing import Any
 import pychromecast
 
 _STOPPED_CONNECT = "Failed to connect: %s. aborting due to stop signal."
+# PyChromecast 14.0.x includes the device prefix in its message template;
+# 14.1 uses a socket-specific logger to add the same prefix afterward.
+_STOPPED_CONNECT_WITH_DEVICE = "[%s(%s):%s] " + _STOPPED_CONNECT
 
 
 class _ShutdownLogger(logging.LoggerAdapter):
@@ -24,7 +27,7 @@ class _ShutdownLogger(logging.LoggerAdapter):
         # No other message, client, logger level or filter is changed.
         if (
             level == logging.ERROR
-            and msg == _STOPPED_CONNECT
+            and msg in (_STOPPED_CONNECT, _STOPPED_CONNECT_WITH_DEVICE)
             and self._stop.is_set()
         ):
             level = logging.DEBUG

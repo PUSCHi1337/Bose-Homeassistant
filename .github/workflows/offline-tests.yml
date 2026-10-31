@@ -13,7 +13,7 @@ env:
 
 jobs:
   cast-home-assistant:
-    name: Cast shutdown with Home Assistant dependency
+    name: Integration tests with Home Assistant Cast dependency
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -36,8 +36,8 @@ jobs:
           from importlib.metadata import version
           print("Home Assistant Cast dependency:", version("pychromecast"))
           PY
-      - name: Reproduce the stopped TCP connect without network sockets
-        run: python -m pytest tests/test_cast_shutdown_compat.py --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/cast-home-assistant.xml -q
+      - name: Run integration regressions with the Home Assistant Cast dependency
+        run: python -m pytest tests --ignore=tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/cast-home-assistant.xml -q
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -64,6 +64,8 @@ jobs:
           import json, subprocess, sys
           requirements = json.load(open("custom_components/bose/manifest.json"))["requirements"]
           subprocess.check_call([sys.executable, "-m", "pip", "install", *requirements])
+          from importlib.metadata import version
+          print("Manifest-resolved Cast dependency:", version("pychromecast"))
           PY
       - name: Run all integration unit tests without network sockets
         run: python -m pytest tests --ignore=tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/integration.xml -q
