@@ -23,6 +23,7 @@ async def test_stopping_inflight_cast_connection_is_diagnostic_not_error(monkeyp
         socket=None, _request_callbacks={}, tries=1, connecting=True,
         services={HostServiceInfo("192.0.2.10", 8009)}, retry_wait=0.01,
         stop=stop, host="speaker.invalid", port=8009, zconf=None, timeout=0.1,
+        fn="", selector=Mock(),
         logger=logger, _report_connection_status=Mock(),
     )
     failures = []
@@ -34,6 +35,11 @@ async def test_stopping_inflight_cast_connection_is_diagnostic_not_error(monkeyp
         raise TimeoutError("simulated TCP timeout")
 
     monkeypatch.setattr("pychromecast.socket_client.socket.create_connection", pending_connection)
+    monkeypatch.setattr(
+        "pychromecast.socket_client.new_socket",
+        lambda: SimpleNamespace(connect=pending_connection, settimeout=Mock()),
+        raising=False,
+    )
 
     def connect():
         try:
@@ -64,7 +70,9 @@ async def test_stopping_inflight_cast_connection_is_diagnostic_not_error(monkeyp
             worker.join(2)
     assert not worker.is_alive()
     assert len(failures) == 1 and isinstance(failures[0], ChromecastConnectionError)
-    records = [r for r in caplog.records if r.msg == STOP_MESSAGE]
+    records = [r for r in caplog.records if r.getMessage().endswith(
+        "Failed to connect: simulated TCP timeout. aborting due to stop signal."
+    )]
     assert len(records) == 1
     assert records[0].levelno == logging.DEBUG
     assert entity._chromecast_device is None

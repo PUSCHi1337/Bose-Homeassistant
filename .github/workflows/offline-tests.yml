@@ -12,7 +12,40 @@ env:
   SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
+  cast-home-assistant:
+    name: Integration tests with Home Assistant Cast dependency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install the Cast version declared by Home Assistant 2026.10.4
+        run: |
+          python -m pip install -r tests/requirements.txt
+          python - <<'PY'
+          import json, subprocess, sys
+          requirements = json.load(open("custom_components/bose/manifest.json"))["requirements"]
+          subprocess.check_call([
+              sys.executable, "-m", "pip", "install", *requirements,
+              "PyChromecast==14.0.10",
+          ])
+          from importlib.metadata import version
+          print("Home Assistant Cast dependency:", version("pychromecast"))
+          PY
+      - name: Run integration regressions with the Home Assistant Cast dependency
+        run: python -m pytest tests --ignore=tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/cast-home-assistant.xml -q
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cast-home-assistant-results
+          path: junit/cast-home-assistant.xml
+
   test:
+    needs: cast-home-assistant
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,6 +64,8 @@ jobs:
           import json, subprocess, sys
           requirements = json.load(open("custom_components/bose/manifest.json"))["requirements"]
           subprocess.check_call([sys.executable, "-m", "pip", "install", *requirements])
+          from importlib.metadata import version
+          print("Manifest-resolved Cast dependency:", version("pychromecast"))
           PY
       - name: Run all integration unit tests without network sockets
         run: python -m pytest tests --ignore=tests/package --disable-socket --allow-unix-socket --timeout=10 --junitxml=junit/integration.xml -q

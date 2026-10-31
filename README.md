@@ -5,7 +5,7 @@ Custom integration for local control of Bose smart soundbars and speakers.
 Forked from [cavefire/Bose-Homeassistant](https://github.com/cavefire/Bose-Homeassistant).
 The original copyright and [GNU GPLv3 license](LICENSE) remain in effect.
 Fork changes are maintained by [PUSCHi1337](https://github.com/PUSCHi1337),
-dated 2026-10-28 through 2026-10-30 and developed with AI assistance.
+dated 2026-10-28 through 2026-10-31 and developed with AI assistance.
 This project is unofficial and is not affiliated with Bose Corporation.
 
 ## Current state
@@ -17,7 +17,7 @@ not install these changes.
 
 [![Offline integration tests](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml/badge.svg?branch=main)](https://github.com/PUSCHi1337/Bose-Homeassistant/actions/workflows/offline-tests.yml)
 
-The current runtime version is **1.3.5.post7**. The fixes cover:
+The current source version is **1.3.6**. The fixes cover:
 
 - Discovery browser cleanup, a shared connection handshake and bounded recovery.
 - Entry-owned background tasks and the same client retained across address changes.
@@ -27,23 +27,29 @@ The current runtime version is **1.3.5.post7**. The fixes cover:
 - Entry-owned Cast discovery and shutdown. Automatic startup/recovery never enable
   Chromecast or issue playback commands. The configured auto-enable option is
   used only by an explicit media-play request.
-- The exact diagnostic from an already stopped Cast connect is DEBUG for that
-  owned socket only; other errors, clients and global logging settings are preserved.
+- Expected cancellation of an already stopped Cast connect is DEBUG for that
+  owned socket only. Both the older device-prefixed template and the newer
+  socket-logger template are recognized exactly; other errors, clients and
+  global logging settings are preserved.
 
-The baseline has **112 integration tests, 174 library tests with HA dependencies
-and two package checks**, including a dependency downgrade/reinstall check.
-CI uses Home Assistant 2026.10.4 and blocks network sockets in tests.
+CI runs **125 integration tests** with both Home Assistant 2026.10.4's declared
+Cast dependency (PyChromecast 14.0.10) and the manifest-resolved dependency.
+It also runs **174 library tests with HA dependencies and two package checks**,
+including a dependency downgrade/reinstall check. Tests block network sockets.
 See [validation and known limits](VALIDATION.md) for exact source references
 and the scope of the limited passive device checks.
 
-The first public preview is [v1.3.5.post7](https://github.com/PUSCHi1337/Bose-Homeassistant/releases/tag/v1.3.5.post7).
-It is marked as a GitHub pre-release. Accessory recovery after a standby restart
-and longer resource monitoring remain open; see [VALIDATION.md](VALIDATION.md).
+Version **1.3.6** fixes the Cast cancellation message-format mismatch left in
+[the first preview](https://github.com/PUSCHi1337/Bose-Homeassistant/releases/tag/v1.3.5.post7).
+The change corrects diagnostic classification during an explicitly requested
+shutdown; it does not make a powered-off speaker answer network requests.
+Longer resource monitoring and broader device coverage remain open; see
+[VALIDATION.md](VALIDATION.md).
 
 ## Installation and rollback
 
 Use the [installation guide](INSTALL.md) to add this fork as a HACS custom
-repository and select the preview, or install from the release's source ZIP.
+repository and select a published version, or install from its source ZIP.
 Home Assistant installs the pinned companion library automatically. No separate
 pybose installation is required.
 
